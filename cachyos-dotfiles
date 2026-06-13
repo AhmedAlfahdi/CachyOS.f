@@ -1,0 +1,1560 @@
+#!/usr/bin/env python3
+"""
+cachyos-dotfiles — Backup and restore CachyOS + KDE Plasma dotfiles via GitHub.
+
+Usage:
+    cachyos-dotfiles init [--repo URL]     First-time setup
+    cachyos-dotfiles backup                 Copy dotfiles to repo, commit, push
+    cachyos-dotfiles restore [--dry-run]    Pull repo and apply to system
+    cachyos-dotfiles list [--category X]    Show tracked files
+    cachyos-dotfiles enable <path>          Enable a file for tracking
+    cachyos-dotfiles disable <path>         Disable a file from tracking
+    cachyos-dotfiles diff                   Show system vs repo changes
+    cachyos-dotfiles status                 Git status of local repo
+    cachyos-dotfiles pkglist export|import  Manage package list
+
+Per-file control: every dotfile in the manifest can be individually
+enabled or disabled. Use `list` to see all files, then `enable`/`disable`
+to toggle. Disabled files are skipped during backup and restore.
+"""
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+# ── Constants ──────────────────────────────────────────────────────────────
+
+APP_NAME = "cachyos-dotfiles"
+CONFIG_DIR = Path.home() / ".config" / APP_NAME
+CONFIG_FILE = CONFIG_DIR / "config.json"
+MANIFEST_FILE = CONFIG_DIR / "manifest.json"
+DEFAULT_REPO_DIR = Path.home() / ".local" / "share" / APP_NAME / "repo"
+PKGLIST_FILE = "pkglist.txt"
+
+# ANSI colors
+C = {
+    "reset": "\033[0m",
+    "bold": "\033[1m",
+    "dim": "\033[2m",
+    "red": "\033[31m",
+    "green": "\033[32m",
+    "yellow": "\033[33m",
+    "blue": "\033[34m",
+    "cyan": "\033[36m",
+    "white": "\033[37m",
+}
+
+
+def color(text: str, code: str) -> str:
+    """Wrap text in ANSI color codes (skip if not a tty)."""
+    if not sys.stdout.isatty():
+        return text
+    return f"{C.get(code, '')}{text}{C['reset']}"
+
+
+def info(msg: str) -> None:
+    print(f"  {color('•', 'blue')} {msg}")
+
+
+def ok(msg: str) -> None:
+    print(f"  {color('✓', 'green')} {msg}")
+
+
+def warn(msg: str) -> None:
+    print(f"  {color('⚠', 'yellow')} {msg}")
+
+
+def fail(msg: str) -> None:
+    print(f"  {color('✗', 'red')} {msg}")
+    sys.exit(1)
+
+
+# ── Default manifest ──────────────────────────────────────────────────────
+# All dotfiles discovered on the reference CachyOS + KDE Plasma 6 system.
+# Each entry: path, enabled, category, description, sudo, is_dir
+
+DEFAULT_MANIFEST: list[dict[str, Any]] = [
+    # ── CachyOS / System configs ──────────────────────────────────────
+    {
+        "path": "/etc/pacman.conf",
+        "enabled": True,
+        "category": "system",
+        "description": "Pacman config with CachyOS v3 repos, ILoveCandy, parallel downloads",
+        "sudo": True,
+        "is_dir": False,
+    },
+    {
+        "path": "/etc/makepkg.conf",
+        "enabled": True,
+        "category": "system",
+        "description": "Makepkg config with x86_64-v4 / native CFLAGS",
+        "sudo": True,
+        "is_dir": False,
+    },
+    {
+        "path": "/etc/paru.conf",
+        "enabled": True,
+        "category": "system",
+        "description": "Paru AUR helper configuration",
+        "sudo": True,
+        "is_dir": False,
+    },
+    {
+        "path": "/etc/mkinitcpio.conf",
+        "enabled": True,
+        "category": "system",
+        "description": "Mkinitcpio hooks and modules",
+        "sudo": True,
+        "is_dir": False,
+    },
+    {
+        "path": "/etc/locale.conf",
+        "enabled": True,
+        "category": "system",
+        "description": "System locale settings",
+        "sudo": True,
+        "is_dir": False,
+    },
+    {
+        "path": "/etc/vconsole.conf",
+        "enabled": True,
+        "category": "system",
+        "description": "Virtual console keymap and font",
+        "sudo": True,
+        "is_dir": False,
+    },
+    {
+        "path": "/etc/environment",
+        "enabled": True,
+        "category": "system",
+        "description": "System-wide environment variables",
+        "sudo": True,
+        "is_dir": False,
+    },
+    {
+        "path": "/etc/hostname",
+        "enabled": True,
+        "category": "system",
+        "description": "System hostname",
+        "sudo": True,
+        "is_dir": False,
+    },
+    {
+        "path": "/etc/sddm.conf",
+        "enabled": False,
+        "category": "system",
+        "description": "SDDM display manager config (only if using SDDM)",
+        "sudo": True,
+        "is_dir": False,
+    },
+    {
+        "path": "/etc/default/grub",
+        "enabled": False,
+        "category": "system",
+        "description": "GRUB bootloader defaults",
+        "sudo": True,
+        "is_dir": False,
+    },
+    # ── KDE Plasma 6 core configs ─────────────────────────────────────
+    {
+        "path": "~/.config/kdeglobals",
+        "enabled": True,
+        "category": "kde",
+        "description": "KDE global theme, colors, fonts, icons, cursor",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/kwinrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "KWin window manager: effects, tiling, night color",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/kwinoutputconfig.json",
+        "enabled": True,
+        "category": "kde",
+        "description": "KWin monitor layout, resolution, refresh rate, scale",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/kwinrulesrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "KWin window-specific rules",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/kscreenlockerrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Screen locker appearance and wallpaper",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/ksplashrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Splash screen theme",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/kglobalshortcutsrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "All global keyboard shortcuts",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/krunnerrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "KRunner launcher plugins and behavior",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/plasmarc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Plasma shell settings and wallpaper paths",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/plasmashellrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Plasma shell panels and layout",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/plasma-org.kde.plasma.desktop-appletsrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Desktop and panel widgets layout (critical for panel restore)",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/plasma-localerc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Plasma locale / language settings",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/plasmanotifyrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Plasma notification settings",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/ksmserverrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Session management: login/logout behavior",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/kded6rc",
+        "enabled": True,
+        "category": "kde",
+        "description": "KDE daemon services (Plasma 6)",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/kded5rc",
+        "enabled": False,
+        "category": "kde",
+        "description": "KDE daemon services (Plasma 5 legacy)",
+        "sudo": False,
+        "is_dir": False,
+    },
+    # ── KDE Plasma app configs ────────────────────────────────────────
+    {
+        "path": "~/.config/dolphinrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Dolphin file manager: panels, split view, previews",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/konsolerc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Konsole terminal: profiles, history, appearance",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/katerc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Kate text editor settings",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/kcminputrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Input devices: mouse, touchpad, keyboard",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/klaunchrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Application launch feedback settings",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/kxkbrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Keyboard layout configuration",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/baloofilerc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Baloo file indexing: include/exclude paths",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/powermanagementprofilesrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Power management: suspend, brightness, profiles",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/bluedevilglobalrc",
+        "enabled": False,
+        "category": "kde",
+        "description": "Bluetooth global settings",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/systemsettingsrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "System Settings state and history",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/spectaclerc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Spectacle screenshot tool: shortcuts, save location",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/ktimezonedrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Timezone daemon config",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/plasma-nm",
+        "enabled": True,
+        "category": "kde",
+        "description": "Plasma NetworkManager applet settings",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/kactivitymanagerdrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Activity manager daemon",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/kiorc",
+        "enabled": True,
+        "category": "kde",
+        "description": "KIO (file I/O) settings",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/kservicemenurc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Service menu settings",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/kmenueditrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Menu editor state",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/kconf_updaterc",
+        "enabled": False,
+        "category": "kde",
+        "description": "Config migration state (auto-generated)",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/okularrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Okular document viewer settings",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/arkrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "Ark archive manager settings",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/systemmonitorrc",
+        "enabled": True,
+        "category": "kde",
+        "description": "System Monitor settings",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/Trolltech.conf",
+        "enabled": False,
+        "category": "kde",
+        "description": "Qt library settings (auto-generated)",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/kwalletrc",
+        "enabled": False,
+        "category": "kde",
+        "description": "KWallet config (⚠ may contain wallet name — NOT credentials)",
+        "sudo": False,
+        "is_dir": False,
+    },
+    # ── KDE Plasma directories ────────────────────────────────────────
+    {
+        "path": "~/.config/plasma-workspace",
+        "enabled": True,
+        "category": "kde",
+        "description": "Plasma workspace: env scripts, shutdown scripts",
+        "sudo": False,
+        "is_dir": True,
+    },
+    {
+        "path": "~/.config/kdeconnect",
+        "enabled": False,
+        "category": "kde",
+        "description": "KDE Connect paired device configs (has device IDs)",
+        "sudo": False,
+        "is_dir": True,
+    },
+    {
+        "path": "~/.config/KDE",
+        "enabled": False,
+        "category": "kde",
+        "description": "Legacy KDE directory (UserFeedback.conf, etc.)",
+        "sudo": False,
+        "is_dir": True,
+    },
+    # ── GTK theming (for KDE + GTK consistency) ───────────────────────
+    {
+        "path": "~/.config/gtk-3.0/settings.ini",
+        "enabled": True,
+        "category": "kde",
+        "description": "GTK3 theme, font, cursor (for cross-toolkit consistency)",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/gtk-4.0/settings.ini",
+        "enabled": True,
+        "category": "kde",
+        "description": "GTK4 theme and settings",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/gtkrc",
+        "enabled": False,
+        "category": "kde",
+        "description": "Legacy GTK2 theme file in .config",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/gtkrc-2.0",
+        "enabled": False,
+        "category": "kde",
+        "description": "Legacy GTK2 theme file in .config",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.gtkrc-2.0",
+        "enabled": False,
+        "category": "kde",
+        "description": "Legacy GTK2 theme file in home",
+        "sudo": False,
+        "is_dir": False,
+    },
+    # ── CachyOS-specific user configs ─────────────────────────────────
+    {
+        "path": "~/.config/cachyos",
+        "enabled": True,
+        "category": "cachyos",
+        "description": "CachyOS application configs (Hello, etc.)",
+        "sudo": False,
+        "is_dir": True,
+    },
+    {
+        "path": "~/.config/cachyos-hello.json",
+        "enabled": True,
+        "category": "cachyos",
+        "description": "CachyOS Hello application state",
+        "sudo": False,
+        "is_dir": False,
+    },
+    # ── Shell configs ─────────────────────────────────────────────────
+    {
+        "path": "~/.bashrc",
+        "enabled": True,
+        "category": "user",
+        "description": "Bash shell configuration",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.bash_profile",
+        "enabled": False,
+        "category": "user",
+        "description": "Bash login profile",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/fish",
+        "enabled": True,
+        "category": "user",
+        "description": "Fish shell config, functions, completions",
+        "sudo": False,
+        "is_dir": True,
+    },
+    # ── Terminal emulators ────────────────────────────────────────────
+    {
+        "path": "~/.config/kitty",
+        "enabled": True,
+        "category": "user",
+        "description": "Kitty terminal emulator config",
+        "sudo": False,
+        "is_dir": True,
+    },
+    {
+        "path": "~/.config/alacritty",
+        "enabled": True,
+        "category": "user",
+        "description": "Alacritty terminal emulator config",
+        "sudo": False,
+        "is_dir": True,
+    },
+    {
+        "path": "~/.config/ghostty",
+        "enabled": True,
+        "category": "user",
+        "description": "Ghostty terminal emulator config",
+        "sudo": False,
+        "is_dir": True,
+    },
+    # ── Editors ───────────────────────────────────────────────────────
+    {
+        "path": "~/.config/nvim",
+        "enabled": True,
+        "category": "user",
+        "description": "Neovim configuration",
+        "sudo": False,
+        "is_dir": True,
+    },
+    {
+        "path": "~/.config/micro",
+        "enabled": False,
+        "category": "user",
+        "description": "Micro editor settings and keybindings",
+        "sudo": False,
+        "is_dir": True,
+    },
+    # ── System monitors ───────────────────────────────────────────────
+    {
+        "path": "~/.config/btop",
+        "enabled": True,
+        "category": "user",
+        "description": "Btop++ system monitor theme and layout",
+        "sudo": False,
+        "is_dir": True,
+    },
+    # ── Version control ───────────────────────────────────────────────
+    {
+        "path": "~/.gitconfig",
+        "enabled": True,
+        "category": "user",
+        "description": "Git global config (user.name, user.email, aliases, helpers)",
+        "sudo": False,
+        "is_dir": False,
+    },
+    # ── Desktop basics ────────────────────────────────────────────────
+    {
+        "path": "~/.config/user-dirs.dirs",
+        "enabled": True,
+        "category": "user",
+        "description": "XDG user directories (Desktop, Downloads, etc.)",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/user-dirs.locale",
+        "enabled": False,
+        "category": "user",
+        "description": "XDG user directories locale",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/mimeapps.list",
+        "enabled": True,
+        "category": "user",
+        "description": "Default applications for MIME types",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.config/fontconfig",
+        "enabled": True,
+        "category": "user",
+        "description": "Fontconfig settings (hinting, antialiasing, substitutions)",
+        "sudo": False,
+        "is_dir": True,
+    },
+    {
+        "path": "~/.config/libinput-gestures.conf",
+        "enabled": False,
+        "category": "user",
+        "description": "Touchpad gesture configuration",
+        "sudo": False,
+        "is_dir": False,
+    },
+    # ── SSH config — NOT tracked by default (security) ───────────────
+    {
+        "path": "~/.ssh/config",
+        "enabled": False,
+        "category": "user",
+        "description": "⚠ SSH client config — contains hostnames, usernames. Disabled by default for security.",
+        "sudo": False,
+        "is_dir": False,
+    },
+    {
+        "path": "~/.ssh/known_hosts",
+        "enabled": False,
+        "category": "user",
+        "description": "⚠ SSH known hosts — contains server fingerprints. Disabled by default.",
+        "sudo": False,
+        "is_dir": False,
+    },
+]
+
+
+# ── Path helpers ───────────────────────────────────────────────────────────
+
+def expand_path(raw_path: str) -> Path:
+    """Expand ~ and return absolute Path."""
+    if raw_path.startswith("~/"):
+        return Path.home() / raw_path[2:]
+    return Path(raw_path)
+
+
+def repo_path_for(entry: dict[str, Any]) -> str:
+    """
+    Map a manifest entry to a relative path inside the repo.
+    ~/foo/bar → home/foo/bar
+    /etc/foo  → root/etc/foo
+    """
+    raw = entry["path"]
+    if raw.startswith("~/"):
+        return "home/" + raw[2:]
+    elif raw.startswith("/"):
+        return "root" + raw
+    else:
+        return "home/" + raw
+
+
+# ── Config management ──────────────────────────────────────────────────────
+
+def load_config() -> dict[str, Any]:
+    """Load config from CONFIG_FILE, or return defaults."""
+    if CONFIG_FILE.exists():
+        with open(CONFIG_FILE) as f:
+            return json.load(f)
+    return {
+        "repo_url": "",
+        "repo_path": str(DEFAULT_REPO_DIR),
+        "backup_dir": str(CONFIG_DIR / "backups"),
+        "pkglist": True,
+    }
+
+
+def save_config(cfg: dict[str, Any]) -> None:
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(cfg, f, indent=2)
+        f.write("\n")
+
+
+# ── Manifest management ────────────────────────────────────────────────────
+
+def load_manifest() -> list[dict[str, Any]]:
+    """Load manifest from MANIFEST_FILE, or return embedded defaults."""
+    if MANIFEST_FILE.exists():
+        with open(MANIFEST_FILE) as f:
+            return json.load(f)
+    # Return a deep copy of the defaults
+    return [dict(e) for e in DEFAULT_MANIFEST]
+
+
+def save_manifest(manifest: list[dict[str, Any]]) -> None:
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(MANIFEST_FILE, "w") as f:
+        json.dump(manifest, f, indent=2)
+        f.write("\n")
+
+
+def find_entry(manifest: list[dict[str, Any]], path: str) -> dict[str, Any] | None:
+    """Find a manifest entry by path (fuzzy match)."""
+    # Exact match
+    for entry in manifest:
+        if entry["path"] == path:
+            return entry
+    # Match by suffix (allow shorthand like 'kwinrc' or 'pacman.conf')
+    for entry in manifest:
+        if entry["path"].endswith("/" + path) or entry["path"].endswith(path):
+            return entry
+    # Case-insensitive
+    path_lower = path.lower()
+    for entry in manifest:
+        if entry["path"].lower().endswith("/" + path_lower) or entry["path"].lower().endswith(path_lower):
+            return entry
+    return None
+
+
+# ── Git helpers ────────────────────────────────────────────────────────────
+
+def git(*args: str, cwd: Path | None = None, capture: bool = True) -> subprocess.CompletedProcess:
+    """Run a git command. Raises on failure when capture=True and check=True."""
+    cmd = ["git"] + list(args)
+    try:
+        return subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=capture,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        fail("git is not installed. Install git to use this tool.")
+
+
+def git_check(cwd: Path) -> bool:
+    """Check if a directory is a git repo."""
+    result = git("rev-parse", "--git-dir", cwd=cwd, capture=True)
+    return result.returncode == 0
+
+
+def git_has_remote(cwd: Path) -> bool:
+    """Check if the repo has a remote configured."""
+    result = git("remote", "get-url", "origin", cwd=cwd, capture=True)
+    return result.returncode == 0 and result.stdout.strip() != ""
+
+
+def git_push(cwd: Path) -> bool:
+    """Push to origin. Returns True on success."""
+    result = git("push", "-u", "origin", "HEAD", cwd=cwd, capture=True)
+    if result.returncode != 0:
+        warn(f"Push may have failed:\n{result.stderr}")
+        return False
+    return True
+
+
+def git_convert_ssh_to_https(url: str) -> str | None:
+    """Convert git@github.com:user/repo.git → https://github.com/user/repo.git"""
+    if url.startswith("git@github.com:"):
+        rest = url[len("git@github.com:"):]
+        if rest.endswith(".git"):
+            rest = rest[:-4]
+        return f"https://github.com/{rest}.git"
+    return None
+
+
+def gh_is_authenticated() -> bool:
+    """Check if gh CLI is logged in."""
+    try:
+        result = subprocess.run(
+            ["gh", "auth", "status"], capture_output=True, text=True
+        )
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
+
+
+def git_clone_or_pull(repo_url: str, repo_dir: Path) -> bool:
+    """
+    Clone a repo if it doesn't exist, otherwise pull.
+    Returns True on success, False if auth/network failed (caller should handle).
+    """
+    repo_dir.parent.mkdir(parents=True, exist_ok=True)
+    if repo_dir.exists() and git_check(repo_dir):
+        info(f"Pulling latest from {repo_url} ...")
+        result = git("pull", "--rebase", "origin", "HEAD", cwd=repo_dir, capture=True)
+        if result.returncode != 0:
+            warn(f"Pull had issues (may be OK):\n{result.stderr.strip()}")
+        return True
+    else:
+        if repo_dir.exists():
+            shutil.rmtree(repo_dir)
+        info(f"Cloning {repo_url} ...")
+        result = git("clone", repo_url, str(repo_dir), capture=True)
+        if result.returncode == 0:
+            return True
+        stderr = result.stderr.lower()
+        stdout = result.stdout.lower()
+        combined = stderr + stdout
+
+        # Detect auth failures and give helpful advice
+        if "permission denied" in combined and "publickey" in combined:
+            print(f"\n  {color('✗', 'red')} SSH authentication failed — no SSH key configured for GitHub.")
+            print(f"  {color('Options:', 'dim')}")
+            https_url = git_convert_ssh_to_https(repo_url)
+            if gh_is_authenticated():
+                print(f"    {color('1.', 'dim')} gh CLI is authenticated. Use HTTPS instead:")
+                if https_url:
+                    print(f"       {color('./cachyos-dotfiles init --repo ' + https_url, 'cyan')}")
+                else:
+                    print(f"       {color('./cachyos-dotfiles init --repo https://github.com/YOU/repo.git', 'cyan')}")
+            else:
+                print(f"    {color('1.', 'dim')} Set up gh auth:  {color('gh auth login', 'cyan')}")
+                print(f"       Then use HTTPS: {color('./cachyos-dotfiles init --repo https://github.com/YOU/repo.git', 'cyan')}")
+            print(f"    {color('2.', 'dim')} Set up SSH keys:  {color('ssh-keygen -t ed25519 -C you@email.com', 'cyan')}")
+            print(f"       Then add to GitHub: {color('gh ssh-key add ~/.ssh/id_ed25519.pub', 'cyan')}")
+            return False
+
+        if "could not read from remote repository" in combined:
+            print(f"\n  {color('✗', 'red')} Could not reach remote repository.")
+            print(f"    {color('Make sure the repo exists and you have access.', 'dim')}")
+            return False
+
+        # Generic failure
+        warn(f"Clone failed:\n{result.stderr.strip()}")
+        return False
+
+
+# ── File operations ────────────────────────────────────────────────────────
+
+def copy_file_safe(src: Path, dst: Path) -> None:
+    """Copy a file, creating parent dirs."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+
+
+def copy_dir_safe(src: Path, dst: Path, exclude_git: bool = True) -> None:
+    """Copy a directory recursively."""
+    if not src.exists():
+        return
+    dst.mkdir(parents=True, exist_ok=True)
+    for item in src.iterdir():
+        if exclude_git and item.name == ".git":
+            continue
+        if item.is_file():
+            shutil.copy2(item, dst / item.name)
+        elif item.is_dir():
+            copy_dir_safe(item, dst / item.name, exclude_git)
+
+
+def file_differs(src: Path, dst: Path) -> bool:
+    """Check if two files differ."""
+    if not src.exists() or not dst.exists():
+        return True
+    try:
+        return src.read_bytes() != dst.read_bytes()
+    except OSError:
+        return True
+
+
+def needs_sudo(path: Path) -> bool:
+    """Check if a path likely requires sudo to write to."""
+    if not path.exists():
+        # Check parent
+        parent = path.parent
+        while not parent.exists() and parent != parent.parent:
+            parent = parent.parent
+        return not os.access(str(parent), os.W_OK)
+    return not os.access(str(path), os.W_OK)
+
+
+def sudo_copy(src: Path, dst: Path) -> None:
+    """Copy a file using sudo if needed."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if needs_sudo(dst.parent) or needs_sudo(dst):
+        cmd = ["sudo", "cp", str(src), str(dst)]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            fail(f"sudo cp failed:\n{result.stderr}")
+    else:
+        shutil.copy2(src, dst)
+
+
+def sudo_mkdir(path: Path) -> None:
+    """Create a directory using sudo if needed."""
+    if path.exists():
+        return
+    if needs_sudo(path.parent if path.parent.exists() else path):
+        subprocess.run(["sudo", "mkdir", "-p", str(path)], check=True)
+    else:
+        path.mkdir(parents=True, exist_ok=True)
+
+
+# ── Commands ───────────────────────────────────────────────────────────────
+
+def cmd_init(args: argparse.Namespace) -> None:
+    """Initialize cachyos-dotfiles: create config, manifest, clone repo."""
+    print(f"\n{color('═══ cachyos-dotfiles init ═══', 'bold')}\n")
+
+    cfg = load_config()
+    manifest = load_manifest()
+
+    # Determine repo URL
+    if args.repo:
+        cfg["repo_url"] = args.repo
+    elif not cfg.get("repo_url"):
+        print()
+        warn("No GitHub repo configured. You'll need one to push dotfiles.")
+        print("  Create a repo on GitHub (e.g. 'cachyos-dotfiles'), then run:")
+        print(f"  {color('./cachyos-dotfiles init --repo git@github.com:YOU/cachyos-dotfiles.git', 'cyan')}")
+        print("  or for HTTPS:")
+        print(f"  {color('./cachyos-dotfiles init --repo https://github.com/YOU/cachyos-dotfiles.git', 'cyan')}")
+        print()
+        # Still save what we have
+        cfg["repo_url"] = ""
+    else:
+        print(f"  {color('Repo:', 'dim')} {cfg['repo_url']}")
+
+    repo_path = Path(cfg["repo_path"]).expanduser()
+    ok(f"Config dir:  {CONFIG_DIR}")
+    ok(f"Repo path:   {repo_path}")
+
+    # Save config
+    save_config(cfg)
+    ok(f"Config saved to {CONFIG_FILE}")
+
+    # Write default manifest (only if it doesn't exist)
+    if not MANIFEST_FILE.exists():
+        save_manifest(manifest)
+        ok(f"Default manifest written to {MANIFEST_FILE} ({len(manifest)} files)")
+    else:
+        info(f"Manifest already exists at {MANIFEST_FILE} ({len(manifest)} files)")
+
+    # Clone repo if URL is set
+    if cfg["repo_url"]:
+        ok_repo = git_clone_or_pull(cfg["repo_url"], repo_path)
+        if ok_repo:
+            ok(f"Repo ready at {repo_path}")
+        else:
+            print(f"\n  {color('init completed, but repo clone failed.', 'yellow')}")
+            print(f"  {color('Fix the auth issue above, then run:', 'dim')}")
+            print(f"    {color('./cachyos-dotfiles init --repo <correct-url>', 'cyan')}")
+            print(f"  {color('(Your config and manifest are already saved.)', 'dim')}")
+            return
+
+    print(f"\n{color('Next steps:', 'bold')}")
+    print(f"  1. Review manifest:  {color('./cachyos-dotfiles list', 'cyan')}")
+    print(f"  2. Enable/disable:   {color('./cachyos-dotfiles disable kwalletrc', 'cyan')}")
+    print(f"  3. Backup now:       {color('./cachyos-dotfiles backup', 'cyan')}")
+    print()
+
+
+def cmd_list(args: argparse.Namespace) -> None:
+    """List tracked files, optionally filtered by category."""
+    manifest = load_manifest()
+    cfg = load_config()
+
+    categories = {"system": [], "kde": [], "cachyos": [], "user": []}
+    for entry in manifest:
+        cat = entry.get("category", "user")
+        if args.category and cat != args.category:
+            continue
+        categories.setdefault(cat, []).append(entry)
+
+    print(f"\n{color('═══ Tracked dotfiles', 'bold')} — {len(manifest)} total")
+
+    # Summary
+    enabled = sum(1 for e in manifest if e["enabled"])
+    disabled = len(manifest) - enabled
+    has_sudo = sum(1 for e in manifest if e.get("sudo") and e["enabled"])
+    print(f"  {color('Enabled:', 'dim')} {enabled}  {color('Disabled:', 'dim')} {disabled}  {color('Needs sudo:', 'dim')} {has_sudo}")
+
+    for cat_name in ["system", "kde", "cachyos", "user"]:
+        entries = categories.get(cat_name, [])
+        if not entries:
+            continue
+        print(f"\n{color(f'── {cat_name}', 'bold')} ({len(entries)} files)")
+        for entry in entries:
+            status = color("✓", "green") if entry["enabled"] else color("✗", "red")
+            sudo_tag = color(" [sudo]", "yellow") if entry.get("sudo") else ""
+            dir_tag = "/" if entry.get("is_dir") else ""
+            name = entry["path"] + dir_tag
+            desc = entry.get("description", "")
+            print(f"  {status} {color(name, 'cyan')}{sudo_tag}")
+            if desc:
+                print(f"      {color(desc, 'dim')}")
+
+    print()
+
+
+def cmd_enable(args: argparse.Namespace) -> None:
+    """Enable tracking for a file."""
+    manifest = load_manifest()
+    entry = find_entry(manifest, args.path)
+    if not entry:
+        fail(f"No file matching '{args.path}' found in manifest. Use 'list' to see all files.")
+    if entry["enabled"]:
+        info(f"'{entry['path']}' is already enabled.")
+        return
+    entry["enabled"] = True
+    save_manifest(manifest)
+    ok(f"Enabled: {entry['path']}")
+
+
+def cmd_disable(args: argparse.Namespace) -> None:
+    """Disable tracking for a file."""
+    manifest = load_manifest()
+    entry = find_entry(manifest, args.path)
+    if not entry:
+        fail(f"No file matching '{args.path}' found in manifest. Use 'list' to see all files.")
+    if not entry["enabled"]:
+        info(f"'{entry['path']}' is already disabled.")
+        return
+    entry["enabled"] = False
+    save_manifest(manifest)
+    ok(f"Disabled: {entry['path']}")
+
+
+def cmd_backup(args: argparse.Namespace) -> None:
+    """Backup dotfiles: copy enabled files to repo, commit, push."""
+    print(f"\n{color('═══ cachyos-dotfiles backup ═══', 'bold')}\n")
+
+    cfg = load_config()
+    manifest = load_manifest()
+    repo_dir = Path(cfg["repo_path"]).expanduser()
+
+    if not repo_dir.exists() or not git_check(repo_dir):
+        fail("Repo not found. Run 'init' first to clone your GitHub dotfiles repo.")
+
+    # Pull latest first
+    info("Pulling latest changes from remote ...")
+    git_clone_or_pull(cfg["repo_url"], repo_dir)
+
+    enabled_entries = [e for e in manifest if e["enabled"]]
+    if not enabled_entries:
+        warn("No files are enabled. Use 'enable <file>' to track files, then backup again.")
+        return
+
+    print(f"  {color('Backing up', 'dim')} {len(enabled_entries)} {color('files', 'dim')}\n")
+
+    backed_up = 0
+    errors = 0
+    skipped = 0
+
+    for entry in enabled_entries:
+        src = expand_path(entry["path"])
+        rel = repo_path_for(entry)
+        dst = repo_dir / rel
+
+        if not src.exists():
+            print(f"  {color('?', 'yellow')} {entry['path']} — source not found, skipping")
+            skipped += 1
+            continue
+
+        try:
+            if entry.get("is_dir"):
+                # Remove old copy, then copy fresh
+                if dst.exists():
+                    shutil.rmtree(dst)
+                copy_dir_safe(src, dst)
+            else:
+                copy_file_safe(src, dst)
+            backed_up += 1
+            tag = color("✓", "green")
+            print(f"  {tag} {entry['path']}")
+        except (OSError, PermissionError) as e:
+            errors += 1
+            print(f"  {color('✗', 'red')} {entry['path']} — {e}")
+
+    # Package list
+    if cfg.get("pkglist", True):
+        try:
+            result = subprocess.run(
+                ["pacman", "-Qqe"],
+                capture_output=True, text=True, check=True,
+            )
+            pkglist_path = repo_dir / PKGLIST_FILE
+            pkglist_path.write_text(result.stdout)
+            ok(f"Package list exported ({len(result.stdout.splitlines())} packages)")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            warn("Could not export package list (pacman not available?)")
+
+    # Copy manifest into repo as reference
+    if MANIFEST_FILE.exists():
+        shutil.copy2(MANIFEST_FILE, repo_dir / "manifest.json")
+
+    # Summary
+    print(f"\n  {color('Backed up:', 'dim')} {backed_up}  {color('Skipped:', 'dim')} {skipped}  {color('Errors:', 'dim')} {errors}")
+
+    # Check for changes
+    status_result = git("status", "--porcelain", cwd=repo_dir, capture=True)
+    if not status_result.stdout.strip():
+        info("No changes detected — everything is up to date.")
+        return
+
+    # Stage all
+    git("add", "-A", cwd=repo_dir, capture=False)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    hostname = os.uname().nodename
+    commit_msg = f"backup: {timestamp} @ {hostname}"
+    result = git("commit", "-m", commit_msg, cwd=repo_dir, capture=True)
+    if result.returncode == 0:
+        ok(f"Committed: {commit_msg}")
+    else:
+        # Check if it's "nothing to commit"
+        if "nothing to commit" in result.stdout or "nothing to commit" in result.stderr:
+            info("Nothing to commit.")
+            return
+        warn(f"Commit may have failed:\n{result.stderr.strip()}")
+
+    # Push
+    if git_has_remote(repo_dir):
+        print(f"\n  {color('Pushing to remote...', 'dim')}")
+        if git_push(repo_dir):
+            ok("Push successful ✓")
+        else:
+            warn("Push failed. Your changes are committed locally.")
+            print("  Run 'git push' manually or check your GitHub auth.")
+    else:
+        warn("No remote configured. Commit is local only.")
+        print(f"  Add a remote: cd {repo_dir} && git remote add origin <url>")
+
+    print()
+
+
+def cmd_restore(args: argparse.Namespace) -> None:
+    """Restore dotfiles: pull repo, apply files to system."""
+    print(f"\n{color('═══ cachyos-dotfiles restore ═══', 'bold')}\n")
+
+    cfg = load_config()
+    manifest = load_manifest()
+    repo_dir = Path(cfg["repo_path"]).expanduser()
+    backup_dir = Path(cfg["backup_dir"]).expanduser()
+
+    if not repo_dir.exists() or not git_check(repo_dir):
+        fail("Repo not found. Run 'init' first to clone your GitHub dotfiles repo.")
+
+    # Pull latest
+    info("Pulling latest changes from remote ...")
+    git_clone_or_pull(cfg["repo_url"], repo_dir)
+
+    # Also load manifest from repo if available (may be newer)
+    repo_manifest_path = repo_dir / "manifest.json"
+    if repo_manifest_path.exists():
+        try:
+            with open(repo_manifest_path) as f:
+                repo_manifest = json.load(f)
+            info(f"Using manifest from repo ({len(repo_manifest)} files)")
+            # Merge: keep local enabled/disabled state, but adopt any new entries
+            local_manifest = {e["path"]: e for e in manifest}
+            for re in repo_manifest:
+                if re["path"] in local_manifest:
+                    re["enabled"] = local_manifest[re["path"]]["enabled"]
+            manifest = repo_manifest
+        except (json.JSONDecodeError, KeyError):
+            warn("Could not parse repo manifest, using local manifest.")
+
+    enabled_entries = [e for e in manifest if e["enabled"]]
+    if not enabled_entries:
+        warn("No files are enabled. Use 'enable <file>' then restore again.")
+        return
+
+    # Count sudo files
+    sudo_files = [e for e in enabled_entries if e.get("sudo")]
+    if sudo_files:
+        sudo_names = ", ".join(e["path"] for e in sudo_files[:5])
+        if len(sudo_files) > 5:
+            sudo_names += f" ... and {len(sudo_files) - 5} more"
+        print(f"\n  {color('⚠', 'yellow')} {len(sudo_files)} system file(s) will be restored with sudo:")
+        print(f"      {color(sudo_names, 'dim')}")
+
+    if args.dry_run:
+        print(f"\n  {color('DRY RUN — no files will be written', 'yellow')}\n")
+    else:
+        print(f"\n  {color('Ready to restore', 'dim')} {len(enabled_entries)} {color('files', 'dim')}")
+        if not args.yes:
+            response = input(f"  {color('Proceed?', 'bold')} [y/N] ")
+            if response.lower() not in ("y", "yes"):
+                info("Restore cancelled.")
+                return
+
+    restored = 0
+    backed_up_existing = 0
+    skipped = 0
+    errors = 0
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    session_backup_dir = backup_dir / timestamp
+
+    for entry in enabled_entries:
+        src = repo_dir / repo_path_for(entry)
+        dst = expand_path(entry["path"])
+
+        if not src.exists():
+            print(f"  {color('?', 'yellow')} {entry['path']} — not found in repo, skipping")
+            skipped += 1
+            continue
+
+        if args.dry_run:
+            action = "would restore"
+            if dst.exists():
+                action += " (backup → " + str(session_backup_dir / entry["path"].lstrip("~/")) + ")"
+            print(f"  {color('~', 'dim')} {entry['path']} — {action}")
+            restored += 1
+            continue
+
+        try:
+            # Backup existing file before overwriting
+            needs_backup = dst.exists() and file_differs(src, dst)
+            if needs_backup:
+                backup_path = session_backup_dir / entry["path"].lstrip("/").replace("~", "home")
+                backup_path.parent.mkdir(parents=True, exist_ok=True)
+                if entry.get("is_dir"):
+                    if dst.is_dir():
+                        copy_dir_safe(dst, backup_path)
+                else:
+                    shutil.copy2(dst, backup_path)
+                backed_up_existing += 1
+
+            # Write the new file
+            if entry.get("is_dir"):
+                if entry.get("sudo"):
+                    sudo_mkdir(dst)
+                    for item in src.iterdir():
+                        if item.name == ".git":
+                            continue
+                        item_dst = dst / item.name
+                        if item.is_file():
+                            sudo_copy(item, item_dst)
+                        elif item.is_dir():
+                            copy_dir_safe(item, item_dst)
+                            # Fix permissions if needed
+                            if needs_sudo(item_dst):
+                                subprocess.run(["sudo", "chown", "-R", f"{os.getuid()}:{os.getgid()}", str(item_dst)])
+                else:
+                    copy_dir_safe(src, dst)
+            else:
+                if entry.get("sudo"):
+                    sudo_copy(src, dst)
+                else:
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dst)
+
+            restored += 1
+            print(f"  {color('✓', 'green')} {entry['path']}")
+        except (OSError, PermissionError, subprocess.CalledProcessError) as e:
+            errors += 1
+            print(f"  {color('✗', 'red')} {entry['path']} — {e}")
+
+    # Summary
+    print(f"\n  {color('Restored:', 'dim')} {restored}  {color('Backed up:', 'dim')} {backed_up_existing}  {color('Skipped:', 'dim')} {skipped}  {color('Errors:', 'dim')} {errors}")
+    if backed_up_existing > 0:
+        print(f"  {color('Previous files saved to:', 'dim')} {session_backup_dir}")
+
+    # Package list restore offer
+    pkglist_path = repo_dir / PKGLIST_FILE
+    if pkglist_path.exists() and not args.dry_run:
+        pkg_count = len(pkglist_path.read_text().splitlines())
+        print(f"\n  {color('Package list available:', 'dim')} {pkg_count} packages")
+        print(f"  To install: {color('sudo pacman -S --needed - < ' + str(pkglist_path), 'cyan')}")
+        if not args.yes:
+            response = input(f"  {color('Install packages now?', 'bold')} [y/N] ")
+            if response.lower() in ("y", "yes"):
+                print()
+                subprocess.run(
+                    ["sudo", "pacman", "-S", "--needed", "-"],
+                    stdin=open(pkglist_path),
+                )
+
+    # Remind about Plasma restart
+    if not args.dry_run and restored > 0:
+        print(f"\n  {color('⚠', 'yellow')} KDE configs restored. For changes to take effect:")
+        print(f"    {color('systemctl --user restart plasma-plasmashell', 'cyan')}")
+        print(f"    {color('# or log out and back in', 'dim')}")
+
+    print()
+
+
+def cmd_diff(args: argparse.Namespace) -> None:
+    """Show diff between system files and repo copies."""
+    print(f"\n{color('═══ cachyos-dotfiles diff ═══', 'bold')}\n")
+
+    cfg = load_config()
+    manifest = load_manifest()
+    repo_dir = Path(cfg["repo_path"]).expanduser()
+
+    if not repo_dir.exists() or not git_check(repo_dir):
+        fail("Repo not found. Run 'init' first.")
+
+    enabled_entries = [e for e in manifest if e["enabled"]]
+    if args.path:
+        entry = find_entry(manifest, args.path)
+        if entry:
+            enabled_entries = [entry]
+        else:
+            fail(f"No file matching '{args.path}' found.")
+
+    changed = 0
+    same = 0
+    missing = 0
+
+    for entry in enabled_entries:
+        src = expand_path(entry["path"])
+        repo_file = repo_dir / repo_path_for(entry)
+
+        if not src.exists():
+            print(f"  {color('?', 'yellow')} {entry['path']} — missing on system")
+            missing += 1
+            continue
+        if not repo_file.exists():
+            print(f"  {color('?', 'yellow')} {entry['path']} — not in repo yet (run backup first)")
+            missing += 1
+            continue
+
+        if entry.get("is_dir"):
+            # Compare directories by file count
+            sys_files = set(f.name for f in src.iterdir() if f.name != ".git") if src.is_dir() else set()
+            repo_files = set(f.name for f in repo_file.iterdir() if f.name != ".git") if repo_file.is_dir() else set()
+            if sys_files != repo_files:
+                print(f"  {color('~', 'yellow')} {entry['path']}/ — directory content differs")
+                only_sys = sys_files - repo_files
+                only_repo = repo_files - sys_files
+                if only_sys:
+                    print(f"      {color('Only on system:', 'dim')} {', '.join(sorted(only_sys))}")
+                if only_repo:
+                    print(f"      {color('Only in repo:', 'dim')} {', '.join(sorted(only_repo))}")
+                changed += 1
+            else:
+                print(f"  {color('=', 'green')} {entry['path']}/ — identical")
+                same += 1
+        else:
+            if file_differs(src, repo_file):
+                print(f"  {color('~', 'yellow')} {entry['path']} — differs")
+                # Show a quick diff summary if the file is small
+                try:
+                    sys_size = src.stat().st_size
+                    repo_size = repo_file.stat().st_size
+                    print(f"      {color(f'system: {sys_size}B  repo: {repo_size}B', 'dim')}")
+                except OSError:
+                    pass
+                changed += 1
+            else:
+                print(f"  {color('=', 'green')} {entry['path']} — identical")
+                same += 1
+
+    print(f"\n  {color('Changed:', 'dim')} {changed}  {color('Identical:', 'dim')} {same}  {color('Missing:', 'dim')} {missing}")
+    print()
+
+
+def cmd_status(args: argparse.Namespace) -> None:
+    """Show git status of the local repo."""
+    cfg = load_config()
+    repo_dir = Path(cfg["repo_path"]).expanduser()
+
+    if not repo_dir.exists() or not git_check(repo_dir):
+        fail("Repo not found. Run 'init' first.")
+
+    print(f"\n{color('═══ Git status', 'bold')} — {repo_dir}\n")
+    result = git("status", cwd=repo_dir, capture=True)
+    print(result.stdout)
+    if result.stderr.strip():
+        print(result.stderr)
+
+    # Also show last 3 commits
+    print(color("── Last 3 commits", "bold"))
+    log = git("log", "--oneline", "-3", cwd=repo_dir, capture=True)
+    print(log.stdout)
+
+
+def cmd_pkglist(args: argparse.Namespace) -> None:
+    """Export or import the package list."""
+    cfg = load_config()
+    repo_dir = Path(cfg["repo_path"]).expanduser()
+
+    if args.action == "export":
+        try:
+            result = subprocess.run(
+                ["pacman", "-Qqe"],
+                capture_output=True, text=True, check=True,
+            )
+            pkglist_path = repo_dir / PKGLIST_FILE
+            pkglist_path.write_text(result.stdout)
+            count = len(result.stdout.splitlines())
+            ok(f"Exported {count} explicitly installed packages to {pkglist_path}")
+        except subprocess.CalledProcessError:
+            fail("pacman -Qqe failed. Are you on an Arch-based system?")
+        except FileNotFoundError:
+            fail("pacman not found. Are you on an Arch-based system?")
+
+    elif args.action == "import":
+        pkglist_path = repo_dir / PKGLIST_FILE
+        if not pkglist_path.exists():
+            fail(f"No package list found at {pkglist_path}. Run 'backup' or 'pkglist export' first.")
+
+        count = len(pkglist_path.read_text().splitlines())
+        print(f"  {color('Installing', 'dim')} {count} {color('packages...', 'dim')}")
+        subprocess.run(
+            ["sudo", "pacman", "-S", "--needed", "-"],
+            stdin=open(pkglist_path),
+        )
+        ok("Package installation complete.")
+
+
+# ── CLI ────────────────────────────────────────────────────────────────────
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="cachyos-dotfiles",
+        description="Backup and restore CachyOS + KDE Plasma dotfiles via GitHub.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  cachyos-dotfiles init --repo git@github.com:you/dotfiles.git
+  cachyos-dotfiles list
+  cachyos-dotfiles list --category kde
+  cachyos-dotfiles disable kwalletrc
+  cachyos-dotfiles backup
+  cachyos-dotfiles restore --dry-run
+  cachyos-dotfiles restore --yes
+  cachyos-dotfiles diff kwinrc
+  cachyos-dotfiles pkglist export
+        """,
+    )
+
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    # init
+    p_init = sub.add_parser("init", help="First-time setup: config, manifest, clone repo")
+    p_init.add_argument("--repo", help="GitHub repo URL (SSH or HTTPS)")
+
+    # backup
+    sub.add_parser("backup", help="Copy enabled files to repo, commit, and push")
+
+    # restore
+    p_restore = sub.add_parser("restore", help="Pull repo and apply files to system")
+    p_restore.add_argument("--dry-run", action="store_true", help="Show what would be done without writing")
+    p_restore.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompts")
+
+    # list
+    p_list = sub.add_parser("list", help="Show tracked files and their status")
+    p_list.add_argument("--category", "-c", choices=["system", "kde", "user", "cachyos"],
+                        help="Filter by category")
+
+    # enable
+    p_enable = sub.add_parser("enable", help="Enable a file for tracking")
+    p_enable.add_argument("path", help="File path or name (e.g. 'kwinrc' or '~/.config/kwinrc')")
+
+    # disable
+    p_disable = sub.add_parser("disable", help="Disable a file from tracking")
+    p_disable.add_argument("path", help="File path or name (e.g. 'kwalletrc')")
+
+    # diff
+    p_diff = sub.add_parser("diff", help="Show system vs repo differences")
+    p_diff.add_argument("path", nargs="?", help="Optional: specific file to diff")
+
+    # status
+    sub.add_parser("status", help="Show git status of the local repo")
+
+    # pkglist
+    p_pkg = sub.add_parser("pkglist", help="Manage package list")
+    p_pkg.add_argument("action", choices=["export", "import"], help="Export or import package list")
+
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+
+    commands = {
+        "init": cmd_init,
+        "backup": cmd_backup,
+        "restore": cmd_restore,
+        "list": cmd_list,
+        "enable": cmd_enable,
+        "disable": cmd_disable,
+        "diff": cmd_diff,
+        "status": cmd_status,
+        "pkglist": cmd_pkglist,
+    }
+
+    cmd = commands.get(args.command)
+    if cmd:
+        cmd(args)
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()
