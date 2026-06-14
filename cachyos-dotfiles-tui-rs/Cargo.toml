@@ -1,10 +1,10 @@
 [package]
 name = "cachyos-dotfiles-tui"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2024"
 description = "Terminal UI for cachyos-dotfiles — browse, toggle, backup, and restore CachyOS + KDE dotfiles"
 license = "MIT"
-repository = "https://github.com/para/CachyOS.f"
+repository = "https://github.com/ahmedalfahdi/CachyOS.f"
 readme = "../README.md"
 keywords = ["dotfiles", "tui", "backup", "cachyos", "kde"]
 categories = ["command-line-utilities"]
