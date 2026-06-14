@@ -1,0 +1,610 @@
+[
+  {
+    "path": "/etc/pacman.conf",
+    "enabled": true,
+    "category": "system",
+    "description": "Pacman config with CachyOS v3 repos, ILoveCandy, parallel downloads",
+    "sudo": true,
+    "is_dir": false
+  },
+  {
+    "path": "/etc/makepkg.conf",
+    "enabled": true,
+    "category": "system",
+    "description": "Makepkg config with x86_64-v4 / native CFLAGS",
+    "sudo": true,
+    "is_dir": false
+  },
+  {
+    "path": "/etc/paru.conf",
+    "enabled": true,
+    "category": "system",
+    "description": "Paru AUR helper configuration",
+    "sudo": true,
+    "is_dir": false
+  },
+  {
+    "path": "/etc/mkinitcpio.conf",
+    "enabled": true,
+    "category": "system",
+    "description": "Mkinitcpio hooks and modules",
+    "sudo": true,
+    "is_dir": false
+  },
+  {
+    "path": "/etc/locale.conf",
+    "enabled": true,
+    "category": "system",
+    "description": "System locale settings",
+    "sudo": true,
+    "is_dir": false
+  },
+  {
+    "path": "/etc/vconsole.conf",
+    "enabled": true,
+    "category": "system",
+    "description": "Virtual console keymap and font",
+    "sudo": true,
+    "is_dir": false
+  },
+  {
+    "path": "/etc/environment",
+    "enabled": true,
+    "category": "system",
+    "description": "System-wide environment variables",
+    "sudo": true,
+    "is_dir": false
+  },
+  {
+    "path": "/etc/hostname",
+    "enabled": true,
+    "category": "system",
+    "description": "System hostname",
+    "sudo": true,
+    "is_dir": false
+  },
+  {
+    "path": "/etc/sddm.conf",
+    "enabled": false,
+    "category": "system",
+    "description": "SDDM display manager config (only if using SDDM)",
+    "sudo": true,
+    "is_dir": false
+  },
+  {
+    "path": "/etc/default/grub",
+    "enabled": false,
+    "category": "system",
+    "description": "GRUB bootloader defaults",
+    "sudo": true,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/kdeglobals",
+    "enabled": true,
+    "category": "kde",
+    "description": "KDE global theme, colors, fonts, icons, cursor",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/kwinrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "KWin window manager: effects, tiling, night color",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/kwinoutputconfig.json",
+    "enabled": true,
+    "category": "kde",
+    "description": "KWin monitor layout, resolution, refresh rate, scale",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/kwinrulesrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "KWin window-specific rules",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/kscreenlockerrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Screen locker appearance and wallpaper",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/ksplashrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Splash screen theme",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/kglobalshortcutsrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "All global keyboard shortcuts",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/krunnerrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "KRunner launcher plugins and behavior",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/plasmarc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Plasma shell settings and wallpaper paths",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/plasmashellrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Plasma shell panels and layout",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/plasma-org.kde.plasma.desktop-appletsrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Desktop and panel widgets layout (critical for panel restore)",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/plasma-localerc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Plasma locale / language settings",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/plasmanotifyrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Plasma notification settings",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/ksmserverrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Session management: login/logout behavior",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/kded6rc",
+    "enabled": true,
+    "category": "kde",
+    "description": "KDE daemon services (Plasma 6)",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/kded5rc",
+    "enabled": false,
+    "category": "kde",
+    "description": "KDE daemon services (Plasma 5 legacy)",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/dolphinrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Dolphin file manager: panels, split view, previews",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/konsolerc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Konsole terminal: profiles, history, appearance",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/katerc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Kate text editor settings",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/kcminputrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Input devices: mouse, touchpad, keyboard",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/klaunchrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Application launch feedback settings",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/kxkbrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Keyboard layout configuration",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/baloofilerc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Baloo file indexing: include/exclude paths",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/powermanagementprofilesrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Power management: suspend, brightness, profiles",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/bluedevilglobalrc",
+    "enabled": false,
+    "category": "kde",
+    "description": "Bluetooth global settings",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/systemsettingsrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "System Settings state and history",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/spectaclerc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Spectacle screenshot tool: shortcuts, save location",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/ktimezonedrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Timezone daemon config",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/plasma-nm",
+    "enabled": true,
+    "category": "kde",
+    "description": "Plasma NetworkManager applet settings",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/kactivitymanagerdrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Activity manager daemon",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/kiorc",
+    "enabled": true,
+    "category": "kde",
+    "description": "KIO (file I/O) settings",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/kservicemenurc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Service menu settings",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/kmenueditrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Menu editor state",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/kconf_updaterc",
+    "enabled": false,
+    "category": "kde",
+    "description": "Config migration state (auto-generated)",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/okularrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Okular document viewer settings",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/arkrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "Ark archive manager settings",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/systemmonitorrc",
+    "enabled": true,
+    "category": "kde",
+    "description": "System Monitor settings",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/Trolltech.conf",
+    "enabled": false,
+    "category": "kde",
+    "description": "Qt library settings (auto-generated)",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/kwalletrc",
+    "enabled": false,
+    "category": "kde",
+    "description": "KWallet config (\u26a0 may contain wallet name \u2014 NOT credentials)",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/plasma-workspace",
+    "enabled": true,
+    "category": "kde",
+    "description": "Plasma workspace: env scripts, shutdown scripts",
+    "sudo": false,
+    "is_dir": true
+  },
+  {
+    "path": "~/.config/kdeconnect",
+    "enabled": false,
+    "category": "kde",
+    "description": "KDE Connect paired device configs (has device IDs)",
+    "sudo": false,
+    "is_dir": true
+  },
+  {
+    "path": "~/.config/KDE",
+    "enabled": false,
+    "category": "kde",
+    "description": "Legacy KDE directory (UserFeedback.conf, etc.)",
+    "sudo": false,
+    "is_dir": true
+  },
+  {
+    "path": "~/.config/gtk-3.0/settings.ini",
+    "enabled": true,
+    "category": "kde",
+    "description": "GTK3 theme, font, cursor (for cross-toolkit consistency)",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/gtk-4.0/settings.ini",
+    "enabled": true,
+    "category": "kde",
+    "description": "GTK4 theme and settings",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/gtkrc",
+    "enabled": false,
+    "category": "kde",
+    "description": "Legacy GTK2 theme file in .config",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/gtkrc-2.0",
+    "enabled": false,
+    "category": "kde",
+    "description": "Legacy GTK2 theme file in .config",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.gtkrc-2.0",
+    "enabled": false,
+    "category": "kde",
+    "description": "Legacy GTK2 theme file in home",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/cachyos",
+    "enabled": true,
+    "category": "cachyos",
+    "description": "CachyOS application configs (Hello, etc.)",
+    "sudo": false,
+    "is_dir": true
+  },
+  {
+    "path": "~/.config/cachyos-hello.json",
+    "enabled": true,
+    "category": "cachyos",
+    "description": "CachyOS Hello application state",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.bashrc",
+    "enabled": true,
+    "category": "user",
+    "description": "Bash shell configuration",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.bash_profile",
+    "enabled": false,
+    "category": "user",
+    "description": "Bash login profile",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/fish",
+    "enabled": true,
+    "category": "user",
+    "description": "Fish shell config, functions, completions",
+    "sudo": false,
+    "is_dir": true
+  },
+  {
+    "path": "~/.config/kitty",
+    "enabled": true,
+    "category": "user",
+    "description": "Kitty terminal emulator config",
+    "sudo": false,
+    "is_dir": true
+  },
+  {
+    "path": "~/.config/alacritty",
+    "enabled": true,
+    "category": "user",
+    "description": "Alacritty terminal emulator config",
+    "sudo": false,
+    "is_dir": true
+  },
+  {
+    "path": "~/.config/ghostty",
+    "enabled": true,
+    "category": "user",
+    "description": "Ghostty terminal emulator config",
+    "sudo": false,
+    "is_dir": true
+  },
+  {
+    "path": "~/.config/nvim",
+    "enabled": true,
+    "category": "user",
+    "description": "Neovim configuration",
+    "sudo": false,
+    "is_dir": true
+  },
+  {
+    "path": "~/.config/micro",
+    "enabled": false,
+    "category": "user",
+    "description": "Micro editor settings and keybindings",
+    "sudo": false,
+    "is_dir": true
+  },
+  {
+    "path": "~/.config/btop",
+    "enabled": true,
+    "category": "user",
+    "description": "Btop++ system monitor theme and layout",
+    "sudo": false,
+    "is_dir": true
+  },
+  {
+    "path": "~/.gitconfig",
+    "enabled": true,
+    "category": "user",
+    "description": "Git global config (user.name, user.email, aliases, helpers)",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/user-dirs.dirs",
+    "enabled": true,
+    "category": "user",
+    "description": "XDG user directories (Desktop, Downloads, etc.)",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/user-dirs.locale",
+    "enabled": false,
+    "category": "user",
+    "description": "XDG user directories locale",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/mimeapps.list",
+    "enabled": true,
+    "category": "user",
+    "description": "Default applications for MIME types",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.config/fontconfig",
+    "enabled": true,
+    "category": "user",
+    "description": "Fontconfig settings (hinting, antialiasing, substitutions)",
+    "sudo": false,
+    "is_dir": true
+  },
+  {
+    "path": "~/.config/libinput-gestures.conf",
+    "enabled": false,
+    "category": "user",
+    "description": "Touchpad gesture configuration",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.ssh/config",
+    "enabled": false,
+    "category": "user",
+    "description": "\u26a0 SSH client config \u2014 contains hostnames, usernames. Disabled by default for security.",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.ssh/known_hosts",
+    "enabled": false,
+    "category": "user",
+    "description": "\u26a0 SSH known hosts \u2014 contains server fingerprints. Disabled by default.",
+    "sudo": false,
+    "is_dir": false
+  }
+]
