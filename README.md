@@ -10,24 +10,41 @@ Default manifest tracks **76 files** across system configs, KDE Plasma 6, CachyO
 
 ---
 
+## Install
+
+### TUI (recommended)
+
+```bash
+cargo install cachyos-dotfiles-tui
+```
+
+That's it. One command, no cloning, no building manually. Requires [Rust](https://rustup.rs).
+
+### CLI script
+
+```bash
+# Clone the repo (needed for the Python CLI and manifest)
+git clone https://github.com/YOU/CachyOS.f.git
+cd CachyOS.f
+chmod +x cachyos-dotfiles
+```
+
+---
+
 ## Quick Start
 
 ### First-time setup
 
 ```bash
-# 1. Clone this repo
+# 1. Install the TUI
+cargo install cachyos-dotfiles-tui
+
+# 2. Clone the repo for the CLI and manifest
 git clone https://github.com/YOU/CachyOS.f.git
 cd CachyOS.f
-
-# 2. Make the CLI executable
 chmod +x cachyos-dotfiles
 
-# 3. Build and install the TUI (one time)
-cd cachyos-dotfiles-tui-rs
-cargo install --path .
-cd ..
-
-# 4. Run the wizard (auto-starts if no config found)
+# 3. Run the wizard (auto-starts if no config found)
 cachyos-dotfiles-tui --wizard
 ```
 
@@ -257,7 +274,7 @@ Everything that defines your desktop environment:
 | Item | Path |
 |---|---|
 | **TUI binary** (after install) | `~/.cargo/bin/cachyos-dotfiles-tui` |
-| **CLI script** | wherever you cloned the repo, e.g. `~/CW-Projects/CachyOS.f/cachyos-dotfiles` |
+| **CLI script** | wherever you cloned the repo, e.g. `~/CachyOS.f/cachyos-dotfiles` |
 | **Config** | `~/.config/cachyos-dotfiles/config.json` |
 | **Manifest** | `~/.config/cachyos-dotfiles/manifest.json` |
 | **Local git repo** | `~/.local/share/cachyos-dotfiles/repo/` |
@@ -274,27 +291,24 @@ Everything that defines your desktop environment:
 - `gh` CLI (for GitHub auth — uses HTTPS, no SSH keys needed)
 
 ### Rust TUI
-- Rust toolchain (`rustup`)
-- `cargo`
-- One-time build: `cargo install --path cachyos-dotfiles-tui-rs`
+- Rust toolchain ([rustup](https://rustup.rs))
+- Install: `cargo install cachyos-dotfiles-tui`
 - Binary has zero runtime dependencies
 
 ---
 
-## Build from Source
+## Build from Source (for contributors)
 
 ```bash
 git clone https://github.com/YOU/CachyOS.f.git
-cd CachyOS.f
+cd CachyOS.f/cachyos-dotfiles-tui-rs
 
-# Build TUI
-cd cachyos-dotfiles-tui-rs
+# Build and run directly
 cargo build --release
 ./target/release/cachyos-dotfiles-tui
 
-# Or install globally
+# Or install from local source
 cargo install --path .
-cachyos-dotfiles-tui
 ```
 
 ---
@@ -305,9 +319,9 @@ cachyos-dotfiles-tui
 - **Wallpaper paths** in `plasmarc` may reference external drives — update paths after restore if needed
 - **Monitor layout** (`kwinoutputconfig.json`) contains display UUIDs that change between installs — KWin usually handles this gracefully
 - **Run backup regularly** before system updates: press `b` in the TUI or run `./cachyos-dotfiles backup`
-- **Add to cron/systemd timer** for automated backups: `0 20 * * * cd ~/CW-Projects/CachyOS.f && ./cachyos-dotfiles backup`
+- **Add to cron/systemd timer** for automated backups: `0 20 * * * cd ~/CachyOS.f && ./cachyos-dotfiles backup`
 - **No sudo needed for backup** — system files in `/etc/` are world-readable. Sudo is only needed during restore.
-- **The TUI looks for the CLI** in three places: same directory, `~/CW-Projects/CachyOS.f/cachyos-dotfiles`, or `./cachyos-dotfiles`
+- **The TUI looks for the CLI** in three places: same directory, `~/CachyOS.f/cachyos-dotfiles`, or `./cachyos-dotfiles`
 
 ---
 
@@ -316,7 +330,7 @@ cachyos-dotfiles-tui
 | Symptom | Fix |
 |---|---|
 | "Manifest not found" | Run `cachyos-dotfiles-tui --wizard` or `./cachyos-dotfiles init` |
-| "CLI: No such file" | The TUI can't find the Python script. Run from the project root, or `cargo install --path .` to install globally |
+| "CLI: No such file" | The TUI can't find the Python script. Run from the project root (`~/CachyOS.f/`) |
 | TUI doesn't start | Terminal must be ≥ 24 rows. Try `export TERM=xterm-256color` |
 | "Permission denied (publickey)" | Use HTTPS instead of SSH. Run `gh auth login` for HTTPS auth |
 | Backup hangs | First backup may be slow if pushing a large initial commit. The spinner shows it's working |
