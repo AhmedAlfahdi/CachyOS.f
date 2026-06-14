@@ -197,7 +197,19 @@ fn key_dlg(k: KeyEvent, a: &mut App) -> bool { if let Some(DialogKind::ConfirmRe
 fn repo_file(e: &DotfileEntry) -> (PathBuf, bool) { if e.path.starts_with("~/") { (repo_dir().join("home").join(&e.path[2..]), false) } else if e.path.starts_with('/') { (repo_dir().join("root").join(&e.path[1..]), e.sudo) } else { (repo_dir().join("home").join(&e.path), false) } }
 fn source_path(e: &DotfileEntry) -> PathBuf { if e.path.starts_with("~/") { home().join(&e.path[2..]) } else { PathBuf::from(&e.path) } }
 
+fn extract_cli() -> PathBuf {
+    let dest = home().join(".cargo/bin/cachyos-dotfiles");
+    if !dest.exists() {
+        let _ = std::fs::create_dir_all(dest.parent().unwrap());
+        if std::fs::write(&dest, include_str!("../cachyos-dotfiles")).is_ok() {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755));
+        }
+    }
+    dest
+}
+
 fn ensure_manifest() { if !manifest().exists() { let json = include_str!("default_manifest.json"); if let Ok(entries) = serde_json::from_str::<Vec<DotfileEntry>>(json) { save(&entries); } else { let p = manifest(); let _ = std::fs::create_dir_all(p.parent().unwrap()); std::fs::write(&p, "[]").ok(); } } }
 
-fn main() -> io::Result<()> { ensure_manifest(); let wiz = std::env::args().any(|a| a == "--wizard" || a == "-w") || !config_file().exists(); if wiz { match wizard() { Ok(false) => return Ok(()), _ => {} } } let mut t = ratatui::init(); t.clear().unwrap(); let mut a = App::new(); let r = run(&mut t, &mut a); ratatui::restore(); r }
+fn main() -> io::Result<()> { extract_cli(); ensure_manifest(); let wiz = std::env::args().any(|a| a == "--wizard" || a == "-w") || !config_file().exists(); if wiz { match wizard() { Ok(false) => return Ok(()), _ => {} } } let mut t = ratatui::init(); t.clear().unwrap(); let mut a = App::new(); let r = run(&mut t, &mut a); ratatui::restore(); r }
 fn run(t: &mut ratatui::DefaultTerminal, a: &mut App) -> io::Result<()> { loop { t.draw(|f| ui(f, a))?; if a.mode == Mode::Working { if let Some((ok, out)) = a.poll() { a.update_repo(); if a.label.contains("Dry-run") { a.dialog = Some(DialogKind::ConfirmRestore(out.chars().take(400).collect())); a.mode = Mode::Dialog; } else { a.output_lines = colorize_output(&out); a.output_scroll = 0; a.output_title = a.label.split("...").next().unwrap_or("Result").to_string(); a.mode = Mode::Output; a.set_status(if ok { "✓ Done — q to close" } else { "✗ Failed — q to close" }); } continue; } while event::poll(Duration::from_millis(0))? { let _ = event::read()?; } thread::sleep(Duration::from_millis(16)); continue; } if event::poll(Duration::from_millis(100))? { if let Event::Key(k) = event::read()? { if !handle(k, a) { return Ok(()); } } } } }
