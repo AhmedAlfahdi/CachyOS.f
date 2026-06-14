@@ -57,6 +57,16 @@ fn bat_preview(path: &PathBuf, max_lines: usize) -> Vec<Line<'static>> {
     match out { Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).lines().map(|l| Line::from(l.to_string())).collect(), _ => match fs::read_to_string(path) { Ok(s) => s.lines().take(max_lines).map(|l| Line::from(l.to_string())).collect(), Err(_) => vec![] } }
 }
 
+fn fuzzy_match(pat: &str, text: &str) -> bool {
+    let mut pc = pat.chars().peekable();
+    for tc in text.chars() {
+        if let Some(&p) = pc.peek() {
+            if p.eq_ignore_ascii_case(&tc) { pc.next(); }
+        } else { break; }
+    }
+    pc.peek().is_none()
+}
+
 fn dir_preview(path: &PathBuf) -> Vec<Line<'static>> {
     if !path.exists() || !path.is_dir() { return vec![Line::from("(not a directory)")]; }
     let mut entries: Vec<_> = match fs::read_dir(path) { Ok(d) => d.filter_map(|e| e.ok()).filter(|e| !e.file_name().to_string_lossy().starts_with('.')).collect(), Err(e) => return vec![Line::from(format!("(error: {})", e))] };
@@ -99,8 +109,8 @@ const CATS: &[&str] = &["All","System","KDE","CachyOS","User"];
 const MAP: &[&str] = &["all","system","kde","cachyos","user"];
 
 impl App {
-    fn new() -> Self { let mut s = ListState::default(); s.select(Some(0)); let gs = git_status(); let lb = last_backup_time(); Self { entries: load(), category: 0, filter: String::new(), sel: 0, scroll: 0, mode: Mode::Normal, dialog: None, status: status_bar(&gs, &lb, "Space:toggle  b:backup  r:restore  d:diff  h:help  q:quit"), repo_status: gs, last_backup: lb, list_state: s, rx: None, label: String::new(), sp: 0, sp_tick: Instant::now(), result: None, deadline: Instant::now(), output_lines: Vec::new(), output_scroll: 0, output_title: String::new() } }
-    fn filtered(&self) -> Vec<usize> { let ft = self.filter.to_lowercase(); self.entries.iter().enumerate().filter(|(_, e)| (self.category == 0 || MAP.get(self.category) == Some(&e.category.as_str())) && (ft.is_empty() || e.path.to_lowercase().contains(&ft) || e.description.to_lowercase().contains(&ft))).map(|(i, _)| i).collect() }
+    fn new() -> Self { let mut s = ListState::default(); s.select(Some(0)); let gs = git_status(); let lb = last_backup_time(); Self { entries: load(), category: 0, filter: String::new(), sel: 0, scroll: 0, mode: Mode::Normal, dialog: None, status: status_bar(&gs, &lb, "Space:toggle  /:search  b:backup  r:restore  d:diff  h:help  q:quit"), repo_status: gs, last_backup: lb, list_state: s, rx: None, label: String::new(), sp: 0, sp_tick: Instant::now(), result: None, deadline: Instant::now(), output_lines: Vec::new(), output_scroll: 0, output_title: String::new() } }
+    fn filtered(&self) -> Vec<usize> { let ft = &self.filter; self.entries.iter().enumerate().filter(|(_, e)| (self.category == 0 || MAP.get(self.category) == Some(&e.category.as_str())) && (ft.is_empty() || fuzzy_match(ft, &e.path) || fuzzy_match(ft, &e.description))).map(|(i, _)| i).collect() }
     fn real_idx(&self) -> Option<usize> { self.filtered().get(self.sel).copied() }
     fn count(&self) -> usize { self.filtered().len() }
     fn sync(&mut self, vis: u16) { let n = self.count(); let v = vis.saturating_sub(2) as usize; if n == 0 || v == 0 { self.list_state.select(None); return; } if self.sel >= n { self.sel = n.saturating_sub(1); } if self.sel < self.scroll { self.scroll = self.sel; } else if self.sel >= self.scroll.saturating_add(v) { self.scroll = self.sel.saturating_sub(v.saturating_sub(1)); } if n > v { self.scroll = self.scroll.min(n.saturating_sub(v)); } else { self.scroll = 0; } self.list_state.select(Some((self.sel.saturating_sub(self.scroll)).min(v))); }
@@ -133,7 +143,15 @@ fn ui(f: &mut Frame, a: &mut App) {
         spans.push(Span::styled(cat.to_string(), style));
     }
     f.render_widget(Paragraph::new(Line::from(spans)), header);
-    let [left, right] = Layout::horizontal([Constraint::Length(52), Constraint::Min(20)]).areas(body);
+    let [filter_bar, main_body] = Layout::vertical([Constraint::Length(1), Constraint::Min(3)]).areas(body);
+    if a.mode == Mode::Filter {
+        let cnt = a.filtered().len();
+        let txt = format!("🔍 ▏{}▕  {} match{}", a.filter, cnt, if cnt == 1 { "" } else { "es" });
+        f.render_widget(Paragraph::new(Line::from(Span::styled(txt, Style::default().fg(CY).add_modifier(Modifier::BOLD)))), filter_bar);
+    } else {
+        f.render_widget(Paragraph::new(Line::from(Span::styled("🔍 / to search", Style::default().fg(DM)))), filter_bar);
+    }
+    let [left, right] = Layout::horizontal([Constraint::Length(52), Constraint::Min(20)]).areas(main_body);
     let idx = a.filtered(); let en = idx.iter().filter(|&&i| a.entries[i].enabled).count();
     a.sync(left.height);
     let vis = (left.height.saturating_sub(2) as usize).max(1);
@@ -149,6 +167,7 @@ fn ui(f: &mut Frame, a: &mut App) {
     } else {
         let dl = a.real_idx().map(|i| { let changed = a.entries[i].enabled && file_changed_since_backup(&a.entries[i]); detail_lines(&a.entries[i], changed) }).unwrap_or_else(|| vec![Line::from(Span::styled("Select a file", Style::default().fg(DM).add_modifier(Modifier::ITALIC)))]);
         f.render_widget(Paragraph::new(Text::from(dl)).block(Block::default().borders(Borders::ALL).title(" Details ").border_style(Style::default().fg(DM))).style(Style::default().fg(FG)), detail_area);
+        f.render_widget(Clear, preview_area);
         if let Some(i) = a.real_idx() {
             let e = &a.entries[i];
             if !e.is_dir {
