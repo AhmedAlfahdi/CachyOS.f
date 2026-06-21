@@ -7,6 +7,8 @@ Backup and restore CachyOS + KDE Plasma dotfiles via GitHub — with per-file gr
 
 Tracks **79 files** across 4 categories. Every file can be individually toggled.
 
+![preview of TUI](image.png)
+
 ---
 
 ## Install & Quick Start
