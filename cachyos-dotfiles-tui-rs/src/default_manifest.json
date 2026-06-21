@@ -523,7 +523,31 @@
     "path": "~/.config/nvim",
     "enabled": true,
     "category": "user",
-    "description": "Neovim configuration",
+    "description": "Neovim + LazyVim configuration",
+    "sudo": false,
+    "is_dir": true
+  },
+  {
+    "path": "~/.config/nvim/lazy-lock.json",
+    "enabled": true,
+    "category": "user",
+    "description": "LazyVim plugin version lockfile (reproducible builds)",
+    "sudo": false,
+    "is_dir": false
+  },
+  {
+    "path": "~/.local/share/nvim",
+    "enabled": false,
+    "category": "user",
+    "description": "LazyVim installed plugins cache (large — regeneratable from lazy-lock.json)",
+    "sudo": false,
+    "is_dir": true
+  },
+  {
+    "path": "~/.local/state/nvim",
+    "enabled": false,
+    "category": "user",
+    "description": "LazyVim runtime state (session data, swap files, shada)",
     "sudo": false,
     "is_dir": true
   },

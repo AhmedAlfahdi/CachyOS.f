@@ -6,7 +6,7 @@ Two components:
 - **`cachyos-dotfiles`** — Python CLI (single file, zero dependencies) for backup/restore/git operations
 - **`cachyos-dotfiles-tui`** — Rust terminal UI (ratatui + crossterm) for interactive browsing, toggling, and operations with animated feedback
 
-Default manifest tracks **76 files** across system configs, KDE Plasma 6, CachyOS-specific, and user dotfiles. Every single file can be individually enabled or disabled.
+Default manifest tracks **79 files** across system configs, KDE Plasma 6, CachyOS-specific, and user dotfiles. Every single file can be individually enabled or disabled.
 
 ---
 
@@ -194,7 +194,7 @@ A single-file Python script (stdlib only — no pip packages). All operations ar
 
 ## What's Tracked
 
-The default manifest includes **76 files** across 4 categories. Every file can be individually toggled.
+The default manifest includes **79 files** across 4 categories. Every file can be individually toggled.
 
 ### System (10 files)
 
@@ -220,13 +220,13 @@ Everything that defines your desktop environment:
 
 `~/.config/cachyos/` (directory), `~/.config/cachyos-hello.json` (Hello application state)
 
-### User (17 files)
+### User (20 files)
 
 **Shell:** `.bashrc`, `~/.config/fish/`
 
 **Terminal emulators:** `~/.config/kitty/`, `~/.config/alacritty/`, `~/.config/ghostty/`
 
-**Editors:** `~/.config/nvim/`, `~/.config/micro/` (disabled)
+**Editors:** `~/.config/nvim/` (Neovim + LazyVim), `~/.config/nvim/lazy-lock.json` (plugin version lock), `~/.config/micro/` (disabled)
 
 **System monitors:** `~/.config/btop/`
 
