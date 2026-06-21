@@ -13,15 +13,28 @@ Tracks **79 files** across 4 categories. Every file can be individually toggled.
 
 ## Install & Quick Start
 
+> **Prerequisite:** The TUI is a Rust binary; you need the Rust toolchain to compile it.
+> Install Rust via [rustup](https://rustup.rs/) or your distro's package manager:
+
+| Distro | Command |
+|--------|---------|
+| Arch / CachyOS | `sudo pacman -S rustup` |
+| Fedora | `sudo dnf install rust cargo` |
+| openSUSE | `sudo zypper install rust cargo` |
+| Debian / Ubuntu | `sudo apt install rustc cargo` |
+| Generic (rustup) | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
+
+---
+
+**1. Install (recommended)**
+
 ```bash
-# Install the TUI (recommended)
 cargo install cachyos-dotfiles-tui
+```
 
-# Clone for the CLI + manifest
-git clone https://github.com/AhmedAlfahdi/CachyOS.f.git
-cd CachyOS.f && chmod +x cachyos-dotfiles
+**2. Run the wizard**
 
-# Run the wizard
+```bash
 cachyos-dotfiles-tui --wizard
 ```
 
@@ -30,8 +43,8 @@ The wizard handles GitHub auth, repo setup, and offers an immediate backup.
 Already set up?
 ```bash
 cachyos-dotfiles-tui              # TUI
-./cachyos-dotfiles backup          # CLI backup
-./cachyos-dotfiles restore         # CLI restore
+cachyos-dotfiles backup          # CLI backup
+cachyos-dotfiles restore         # CLI restore
 ```
 
 ---
